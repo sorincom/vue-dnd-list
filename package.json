@@ -1,0 +1,36 @@
+{
+  "private": false,
+  "name": "vue-dnd-list",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Vue Drag and Drop list",
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "build": "vite build"
+  },
+  "peerDependencies": {
+    "vue": "^3.2.45"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.0.0",
+    "sass": "^1.57.1",
+    "vite": "^4.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/vue-dnd-list.umd.cjs",
+  "module": "./dist/vue-dnd-list.js",
+  "exports": {
+    ".": {
+      "import": "./dist/vue-dnd-list.js",
+      "require": "./dist/vue-dnd-list.umd.cjs"
+    },
+    "./styles": {
+      "import": "./dist/style.css",
+      "require": "./dist/style.css"
+    }
+  }
+}
