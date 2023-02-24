@@ -2,15 +2,16 @@
   <transition-group
     name="list-container"
     tag="div"
-    class="list-container"
-    :style="listStyle"
     :class="listClass"
     @drop.prevent="onDrop"
     ref="rootRef"
+    :css="false"
+    @before-enter="onBeforeEnter"
+    @enter="onEnter"
+    @leave="onLeave"
   >
     <div
       :class="dropZoneClass(0)"
-      :style="dropZoneStyle(0)"
       @dragover="handleDragOver({ index: 0, position: 'before' })"
       :key="`${listId}-dropzone-0`" />
     <template v-for="(item, index) in items" :key="keyGeneratorFunc(item)">
@@ -27,16 +28,16 @@
       </DnDListItem>
       <div
         :class="dropZoneClass(index + 1)"
-        :style="dropZoneStyle(index + 1)"
         @dragover="handleDragOver({ index, position: 'after' })" />
     </template>
   </transition-group>
 </template>
 
 <script>
+import gsap from 'gsap'
 import DnDListItem from "./DnDListItem.vue"
 import { dndSharedState } from "./useDnDSharedState"
-import { ref, unref, computed, watch, onBeforeMount, onBeforeUnmount } from "vue"
+import { ref, unref, computed, watch, onBeforeMount, onBeforeUnmount, nextTick } from "vue"
 
 function randomString() {
   const length = 8
@@ -178,7 +179,7 @@ const useDragLeaveSubstitute = function(rootRef) {
  * A list with N items has N+1 drop zones (before the first item, betweeen each
  * two adjacent items and after the last item).
  */
-const useDropZones = function(props, listId) {
+const useDropZones = function(listId) {
 
   const list = unref(listId)
 
@@ -203,24 +204,14 @@ const useDropZones = function(props, listId) {
 
   function dropZoneClass(index) {
     return {
-      "drop-zone": true,
+      'dnd-list-drop-zone': true,
       active: dropZoneIndex.value == index
     }
   }
 
-  function dropZoneStyle(index) {
-    const isCurrent = index == dropZoneIndex.value
-    const style = {}
-    if(props.dropZoneCustomStyle && isCurrent) {
-      Object.assign(style, props.dropZoneCustomStyle)
-    }
-    return style
-  }
-
   return {
     dropZoneIndex,
-    dropZoneClass,
-    dropZoneStyle
+    dropZoneClass
   }
 }
 
@@ -235,7 +226,9 @@ const useDropEvent = function(props, listId, dropZoneIndex) {
     // Move item inside this list
     const item = props.items.splice(oldIndex, 1)[0]
     const insertIndex = newIndex > oldIndex ? newIndex - 1 : newIndex
-    props.items.splice(insertIndex, 0, item)
+    nextTick(() => {
+      props.items.splice(insertIndex, 0, item)
+    })
   }
 
   function addItem(item, index) {
@@ -276,6 +269,37 @@ const useDropEvent = function(props, listId, dropZoneIndex) {
 
   return {
     onDrop
+  }
+}
+
+const useGsap = function() {
+
+  function onBeforeEnter(el) {
+    el.style.opacity = 0
+    el.style.height = 0
+  }
+  function onEnter(el, done) {
+    gsap.to(el, {
+      opacity: 1,
+      duration: 0.6,
+      ease: 'power4.out',
+      height: 'auto',
+      onComplete: done
+    })
+  }
+  function onLeave(el, done) {
+    gsap.to(el, {
+      opacity: 0,
+      duration: 0.3,
+      ease: 'none',
+      height: 0,
+      onComplete: done
+    })
+  }
+  return {
+    onBeforeEnter,
+    onEnter,
+    onLeave
   }
 }
 
@@ -361,83 +385,22 @@ export default {
 
     const { draggingOverList } = useDragLeaveSubstitute(rootRef)
 
-    const { dropZoneIndex, dropZoneClass, dropZoneStyle } = useDropZones(props, listId)
-
-    const listStyle = computed(() => {
-      const style = {}
-      if(props.gap) {
-        style.gap = props.gap
-      }
-      return style
-    })
+    const { dropZoneIndex, dropZoneClass } = useDropZones(listId)
 
     const listClass = computed(() => ({
-      'list-container': true,
       'dragging-over-when-empty': draggingOverList.value && props.items.length === 0
     }))
 
     return {
       listId,
       listClass,
-      listStyle,
       rootRef,
       ...useCustomItemEvents(props, listId),
       dropZoneIndex,
       dropZoneClass,
-      dropZoneStyle,
-      ...useDropEvent(props, listId, dropZoneIndex)
+      ...useDropEvent(props, listId, dropZoneIndex),
+      ...useGsap()
     }
   }
 }
 </script>
-
-<style scoped lang="scss">
-
-.list-container {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  box-sizing: border-box;
-  &.dragging-over-when-empty {
-    border: 2px dashed rgba(0,0,0,0.4);
-  }
-}
-
-.list-container-move, /* apply transition to moving elements */
-.list-container-enter-active,
-.list-container-leave-active {
-  transition: all 0.15s ease-in-out;
-}
-
-.list-container-enter-from,
-.list-container-leave-to {
-  opacity: 0;
-  // transform: translateX(-300px);
-}
-
-/* ensure leaving items are taken out of layout flow so that moving
-   animations can be calculated correctly. */
-.list-container-leave-active {
-  position: absolute;
-}
-
-$transition-duration: 0.125s;
-$transition-curve: ease-in-out;
-$dropZoneHeight: 8px;
-$opacity: 0.4;
-
-.drop-zone {
-  background-color: green;
-  box-sizing: border-box;
-  opacity: 0;
-  height: 0;
-  transition: all $transition-duration $transition-curve;
-  &.active {
-    min-height: $dropZoneHeight;
-    max-height: $dropZoneHeight;
-    opacity: $opacity;
-    transition: all $transition-duration $transition-curve;
-  }
-}
-
-</style>
