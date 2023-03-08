@@ -1,12 +1,6 @@
 <template>
-  <div
-    @dragstart="onDragStart"
-    @dragend="onDragEnd"
-    :draggable="draggable"
-    ref="rootRef">
-    <div style="pointer-events: none;">
-      <slot></slot>
-    </div>
+  <div ref="rootRef" @dragstart="onDragStart" @dragend="onDragEnd" :draggable="draggable">
+    <div style="pointer-events: none;"><slot></slot></div>
   </div>
 </template>
 
@@ -19,10 +13,9 @@ const useDnDItemEvents = function(props, emit, rootRef) {
 
   // Item started being dragged
   const onDragStart = (evt) => {
-    const effect = props.copyOnDrag ? 'copy' : 'move'
+    const effect = props.copy ? 'copy' : 'move'
     evt.dataTransfer.dropEffect = effect
     evt.dataTransfer.effectAllowed = effect
-    evt.dataTransfer.setData('item', JSON.stringify(props.item))
     emit('dnd:drag-started', {index: props.index})
   }
 
@@ -33,25 +26,32 @@ const useDnDItemEvents = function(props, emit, rootRef) {
 
   // Check if something is being dragged over this item.
   // Working with window events because they are more reliable, not
-  // being affected by the item's children generating dnd events.
+  // being affected by the item's children generating DnD events.
   function dragOverWindow(evt) {
     evt.preventDefault()    
-    const el = rootRef.value
-    const rect = el.getBoundingClientRect()
+    const rect = rootRef.value.getBoundingClientRect()
     const draggingOver =
       evt.clientY >= rect.top &&
       evt.clientY <= rect.bottom &&
       evt.clientX >= rect.left &&
       evt.clientX <= rect.right
     if (draggingOver) {
-      const draggedOverTopHalf = (evt.clientY < rect.top + rect.height / 2)
-      const position = draggedOverTopHalf ? 'before' : 'after'
-      emit('dnd:drag-over', {index: props.index, position})
+      const dropZoneHeight = (rect.bottom - rect.top) / 3; // 1/3 of the item height
+      // Check if the mouse is in the top or bottom 1/3 of the item
+      const draggedOverTopDropZone = (evt.clientY < rect.top + dropZoneHeight)
+      const draggedOverBottomDropZone = (evt.clientY > rect.bottom - dropZoneHeight)
+
+      // Emit a custom event with the item's index and the position
+      if (draggedOverTopDropZone) {
+        emit('dnd:drag-over', {index: props.index, position: 'before'})
+      } else if (draggedOverBottomDropZone) {
+        emit('dnd:drag-over', {index: props.index, position: 'after'})
+      }
     }
   }
 
-  // Maybe use intersection observer to avoid wiring upfront tons of handlers,
-  // one for each item in the list?
+  // TODO: try to find other solution than wiring tons of handlers, one for each
+  // item in the list
   onBeforeMount(() => {
     window.addEventListener("dragover", dragOverWindow)
   })
@@ -79,7 +79,7 @@ export default {
       type: Boolean,
       default: false
     },
-    copyOnDrag: {
+    copy: {
       type: Boolean,
       default: false
     }

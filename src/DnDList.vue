@@ -1,43 +1,32 @@
 <template>
-  <transition-group
-    name="list-container"
-    tag="div"
-    :class="listClass"
-    @drop.prevent="onDrop"
-    ref="rootRef"
-    :css="false"
-    @before-enter="onBeforeEnter"
-    @enter="onEnter"
-    @leave="onLeave"
-  >
-    <div
-      :class="dropZoneClass(0)"
-      @dragover="handleDragOver({ index: 0, position: 'before' })"
-      :key="`${listId}-dropzone-0`" />
-    <template v-for="(item, index) in items" :key="keyGeneratorFunc(item)">
-      <DnDListItem
-        :item="item"
-        :index="index"
-        :draggable="!useHandle"
-        :copyOnDrag="copyOnDrag"
-        @dnd:drag-started="handleDragStarted"
-        @dnd:drag-over="handleDragOver"
-        @dnd:drag-ended="handleDragEnded"
-      >
-        <slot name="item" :item="item" :index="index"></slot>
-      </DnDListItem>
-      <div
-        :class="dropZoneClass(index + 1)"
-        @dragover="handleDragOver({ index, position: 'after' })" />
-    </template>
-  </transition-group>
+  <section ref="rootRef" :class="listClass" @drop.prevent="onDrop">
+    <div style="">{{ list }}</div>
+    <TransitionGroup
+      :css="false"
+      @enter="onTransitionEnter">
+      <template v-for="(item, index) in items" :key="item">
+        <DnDListItem
+          :item="item"
+          :index="index"
+          :draggable="!useHandle"
+          :copy="copy"
+          class="dnd-list-item"
+          @dnd:drag-started="handleDragStarted"
+          @dnd:drag-over="handleDragOver">
+          <slot name="item" :item="item" :index="index"></slot>
+        </DnDListItem>
+      </template>
+    </TransitionGroup>
+  </section>
 </template>
 
 <script>
+
+import { ref, computed, watch, onBeforeMount, onBeforeUnmount, nextTick } from "vue"
+import { useMouseInElement } from '@vueuse/core'
 import gsap from 'gsap'
 import DnDListItem from "./DnDListItem.vue"
 import { dndSharedState } from "./useDnDSharedState"
-import { ref, unref, computed, watch, onBeforeMount, onBeforeUnmount, nextTick } from "vue"
 
 function randomString() {
   const length = 8
@@ -55,71 +44,65 @@ function randomString() {
 }
 
 /**
- * Handlers for custom events emitted by DnDListItem
+ * Handlers for custom events emitted by list items
  */
-const useCustomItemEvents = function(props, listId) {
+const useCustomItemEvents = function(props, list, acceptsDrop) {
 
-  const list = unref(listId)
-  
-  /**
-   * One of this list's items has started being dragged
-   */
-  const handleDragStarted = function({ index, height }) {
+  // One of this list's items has started being dragged
+  const handleDragStarted = function({ index }) {
+    const sourceItem = props.items[index]
+    const draggedItem = props.copy ? JSON.parse(JSON.stringify(sourceItem)) : sourceItem
     dndSharedState.patch({
-      sourceIndex: index,
-      sourceList: list,
+      draggedItem,
+      sourceList: list.value
     })
   }
 
-  /**
-   * Something is being dragged over one of this list's items
-   * It may be one of list's own items, an item from another list,
-   * or something else
-   */
+  // Something is being dragged over one of this list's items
+  // It may be one of list's own items, an item from another list,
+  // or something else
   const handleDragOver = function({ index, position }) {
-    // Only patch targets if this list accepts drops
-    if (props.acceptDrop) {
-      dndSharedState.patch({
-        targetList: list,
-        targetIndex: index,
-        targetPosition: position,
-      })
+    
+    if(!acceptsDrop.value) return
+
+    const draggedItem = dndSharedState.draggedItem.value
+
+    const draggedItemIndex = props.items.indexOf(draggedItem)
+
+    const shouldMoveItemInsideList = 
+      props.items.includes(draggedItem)
+      && !(draggedItemIndex == index)
+      && !(index == props.items.length - 1 && position == 'after')
+      && !(dndSharedState.sourceList.value == list.value && props.copy)
+
+    const shouldAddItemToList = !props.items.includes(draggedItem)
+
+    if(shouldMoveItemInsideList) {
+      const oldIndex = props.items.indexOf(draggedItem)
+      const newIndex = position === 'after' ? index + 1 : index
+      if(oldIndex != newIndex) {
+        props.items.splice(oldIndex, 1)
+        nextTick(() => props.items.splice(newIndex, 0, draggedItem))
+        dndSharedState.patch({ operation: 'move' })
+      }
     }
-  }
-
-  /**
-   * Drag ended for one of this list's items.
-   * This handler is responsible for removing the
-   * item from this list, but only if it was dragged
-   * outside the list.
-   */
-  const handleDragEnded = function({ index }) {
-    const doRemove =
-      // safety check
-      index >= 0 &&
-      // remove source item only if the copyOnDrag flag is not set
-      !props.copyOnDrag &&
-      // only handle cases where drag ended outside this list
-      // (if drag ended inside this list, handling is performed by onDrop)
-      !dndSharedState.isTarget(list)
-
-    // Remove item from this list if needed
-    doRemove && props.items.splice(index, 1)
-
-    // Unconditionnally reset dnd shared state
-    dndSharedState.reset()
+    else if(shouldAddItemToList) {
+      const insertIndex = position === 'after' ? index + 1 : index
+      props.items.splice(insertIndex, 0, draggedItem)
+      dndSharedState.patch({ operation: 'add' })
+    }
   }
 
   return {
     handleDragStarted,
-    handleDragEnded,
     handleDragOver,
   }
 }
 
 /**
  * This composable has a single job, to provide a way to detect when the mouse
- * leaves the list container, during a drag operation.
+ * leaves the list container, during a drag operation, and to remove the dragged
+ * item if it's part of list's items.
  * 
  * We will listen to window events instead of attaching a handler to list container's 
  * `dragleave` event because, if the mouse is moved quickly, the `dragleave` event 
@@ -130,24 +113,36 @@ const useCustomItemEvents = function(props, listId) {
  * Therefore, we catch the `dragover` event at window level and use it to detect if 
  * the mouse is over the list.
  */
-const useDragLeaveSubstitute = function(rootRef) {
+const useWindowDragOver = function(props, rootRef, list) {
 
   // Used to know if a dragging operation is happening over this list
   const draggingOverList = ref(false)
 
-  // When dragging leaves the list, clear shared state's drop target
-  watch(draggingOverList, (value) => {
-    if (!value) {
-      dndSharedState.clearTarget()
-    }
-  },
-  { immediate: true })
+  const { isOutside } = useMouseInElement(rootRef, { enterDelay: 0, leaveDelay: 0 })
 
-  // Check if dragging happens over this list and set the draggingOverList
-  // flag accordingly
+  // When dragging leaves the list, clear shared state's drop target
+  watch(draggingOverList, (newVal) => {
+    if (!newVal) {
+      const draggedItem = dndSharedState.draggedItem.value
+      const shouldDeleteItem = 
+        props.items.includes(draggedItem)
+        // only delete the item if the mouse is outside the list, as the
+        // draggingOverList flag is also set to false by the drop event
+        // (and we want to keep the item in the list if it's dropped)
+        && isOutside.value
+        // don't delete from the source list, if that list's `copy` prop is true
+        && !((list.value == dndSharedState.sourceList.value) && props.copy)
+      if(shouldDeleteItem) {
+        const index = props.items.indexOf(draggedItem)
+        props.items.splice(index, 1)
+      }
+    }
+  })
+
+  // This function sets the draggingOverList flag during a drag operation
   function dragOverWindow(evt) {
     evt.preventDefault()
-    const rect = rootRef.value.$el.getBoundingClientRect()
+    const rect = rootRef.value.getBoundingClientRect()
     draggingOverList.value =
       evt.clientY >= rect.top &&
       evt.clientY <= rect.bottom &&
@@ -155,6 +150,7 @@ const useDragLeaveSubstitute = function(rootRef) {
       evt.clientX <= rect.right
   }
 
+  // And this one clears it when the drag operation ends
   function dragEndWindow() {
     draggingOverList.value = false
   }
@@ -174,132 +170,19 @@ const useDragLeaveSubstitute = function(rootRef) {
   }
 }
 
-/**
- * Drop zones are zones between list items where a dragged item can be dropped.
- * A list with N items has N+1 drop zones (before the first item, betweeen each
- * two adjacent items and after the last item).
- */
-const useDropZones = function(listId) {
-
-  const list = unref(listId)
-
-  /**
-   * Returns the index of the drop zone closest to the mouse position during a
-   * drag operation happening over this list.
-   * Shared state's values are updated by the custom item events handlers. This
-   * is merely a helper that computes the closest drop zone based on shared state's
-   * values.
-   */
-  const dropZoneIndex = computed(() => {
-    if (dndSharedState.isTarget(list)) {
-      return dndSharedState.targetPosition.value == "before"
-        ? dndSharedState.targetIndex.value
-        : dndSharedState.targetPosition.value == "after"
-          ? dndSharedState.targetIndex.value + 1
-          : null
-    } else {
-      return null
-    }
-  })
-
-  function dropZoneClass(index) {
-    return {
-      'dnd-list-drop-zone': true,
-      active: dropZoneIndex.value == index
-    }
-  }
-
+const useAnimation = function(props) {
   return {
-    dropZoneIndex,
-    dropZoneClass
-  }
-}
-
-/**
- * Handler for list's `drop` event.
- */
-const useDropEvent = function(props, listId, dropZoneIndex) {
-
-  const list = unref(listId)
-
-  function moveItem(oldIndex, newIndex) {
-    // Move item inside this list
-    const item = props.items.splice(oldIndex, 1)[0]
-    const insertIndex = newIndex > oldIndex ? newIndex - 1 : newIndex
-    nextTick(() => {
-      props.items.splice(insertIndex, 0, item)
-    })
-  }
-
-  function addItem(item, index) {
-    // Add new item to this list
-    props.items.splice(index, 0, item)
-  }
-
-  function onDrop(evt) {
-    if (props.acceptDrop) {
-      if (dndSharedState.isSource(list)) {
-        // Dragging happened within this list.
-        // Depending on the copyOnDrag prop, we either copy the item or move it.
-        if (props.copyOnDrag) {
-          const copyItem = JSON.parse(
-            JSON.stringify(props.items[dndSharedState.sourceIndex.value])
-          )
-          if (props.itemIdGeneratorFunc) {
-            copyItem.id = props.itemIdGeneratorFunc(copyItem)
-          }
-          addItem(copyItem, dropZoneIndex.value)
-        } else {
-          moveItem(dndSharedState.sourceIndex.value, dropZoneIndex.value)
-        }
+    onTransitionEnter: function (el, done) {
+      if(props.animation) {
+        props.animation(el, {
+          onComplete: done
+        })
       } else {
-        // Item is external to this list
-        const droppedItem = JSON.parse(evt.dataTransfer.getData("item"))
-        if (props.itemIdGeneratorFunc) {
-          droppedItem.id = props.itemIdGeneratorFunc(droppedItem)
-        }
-        addItem(droppedItem, dropZoneIndex.value)
+        gsap.effects.ScaleSlideAndAppear(el, {
+          onComplete: done
+        })
       }
-    }
-    if (!dndSharedState.isSource(list)) {
-      // handleDragEnded will not trigger, so we must do the cleanup here
-      dndSharedState.clearTarget()
-    }
-  }
-
-  return {
-    onDrop
-  }
-}
-
-const useGsap = function() {
-
-  function onBeforeEnter(el) {
-    el.style.opacity = 0
-    el.style.height = 0
-  }
-  function onEnter(el, done) {
-    gsap.to(el, {
-      opacity: 1,
-      duration: 0.6,
-      ease: 'power4.out',
-      height: 'auto',
-      onComplete: done
-    })
-  }
-  function onLeave(el, done) {
-    gsap.to(el, {
-      opacity: 0,
-      duration: 0.3,
-      ease: 'none',
-      height: 0,
-      onComplete: done
-    })
-  }
-  return {
-    onBeforeEnter,
-    onEnter,
-    onLeave
+    },
   }
 }
 
@@ -307,17 +190,20 @@ export default {
   name: "DnDList",
   components: { DnDListItem },
   props: {
-    /**
-     * Whether to accept drop (from anywhere: this list, other lists or any external source).
-     */
-    acceptDrop: {
-      type: Boolean,
+    listId: {
+      type: String,
+      required: false,
+    },
+    // Whether to accept drop (from anywhere: this list, other lists or any external source).
+    // When boolean, it controls whether to accept drop from any source.
+    // When string, it will accept drop from a single source, identified by that string.
+    // When array, it will accept drop from sources identified by elements of the array.
+    accept: {
+      type: [String, Boolean, Array],
       default: true,
     },
-    /**
-     * When set, the item will be copied when dragged instead of being moved.
-     */
-    copyOnDrag: {
+    // When set, the item will be copied when dragged instead of being moved.
+    copy: {
       type: Boolean,
       default: false,
     },
@@ -345,61 +231,73 @@ export default {
       type: String,
       default: null,
     },
-    /**
-     * Custom style for the drop zone (when active)
-     */
-    dropZoneCustomStyle: {
-      type: Object,
+    postDrop: {
+      type: Function,
       default: null,
     },
-    /**
-     * Optional function to generate the key for the list item. The function should accept
-     * the item as parameter.
-     * By default, the item id is used.
-     */
-    keyGeneratorFunc: {
+    animation: {
       type: Function,
-      default: function (item) {
-        return item?.id
-      },
-    },
-    /**
-     * Optional function to generate the id for the list item. The function should accept
-     * the item as parameter.
-     * By default, the item id is used. Not called when moving items inside the list
-     */
-    itemIdGeneratorFunc: {
-      type: Function,
-      default: function (item) {
-        return item?.id
-      },
+      default: null,
     },
   },
   setup(props) {
 
     // Unique id for this list
-    const listId = ref(randomString())
+    const list = ref(props.listId || randomString())
 
     // Root ref of this list
     const rootRef = ref(null)
 
-    const { draggingOverList } = useDragLeaveSubstitute(rootRef)
+    const { draggingOverList } = useWindowDragOver(props, rootRef, list)
 
-    const { dropZoneIndex, dropZoneClass } = useDropZones(listId)
+    watch(() => props.copy, (newVal) => {
+      if(newVal && props.accept) {
+        console.warn('The `copy` and `accept` props for the DnDList component should not be both true at the same time.')
+      }
+    })
 
     const listClass = computed(() => ({
-      'dragging-over-when-empty': draggingOverList.value && props.items.length === 0
+      'dragging-over-when-empty': acceptsDrop.value && draggingOverList.value && props.items.length === 0
     }))
 
+    const acceptsDrop = computed(() => {
+      if(props.accept === true) {
+        return true
+      } else if(props.accept === false) {
+        return false
+      } else if(Array.isArray(props.accept)) {
+        return (dndSharedState.sourceList.value == list.value) || props.accept.includes(dndSharedState.sourceList.value)
+      } else {
+        return (dndSharedState.sourceList.value == list.value) || (props.accept === dndSharedState.sourceList.value)
+      }
+    })
+
+    function onDrop() {
+      const draggedItem = dndSharedState.draggedItem.value
+
+      // Custom item events would not fire in this case
+      // Add the dragged item here
+      if(!props.items?.length && acceptsDrop.value) {
+        props.items?.push(draggedItem)
+        dndSharedState.patch({ operation: 'add' })
+      }
+
+      // Apply post-processing for the dropped item
+      if(props.postDrop) {
+        props.postDrop(draggedItem)
+      }
+
+      // Reset the shared state
+      dndSharedState.reset()
+    }
+
     return {
-      listId,
+      list,
       listClass,
       rootRef,
-      ...useCustomItemEvents(props, listId),
-      dropZoneIndex,
-      dropZoneClass,
-      ...useDropEvent(props, listId, dropZoneIndex),
-      ...useGsap()
+      ...useCustomItemEvents(props, list, acceptsDrop),
+      ...useAnimation(props),
+      onDrop
     }
   }
 }

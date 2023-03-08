@@ -4,14 +4,20 @@
   "version": "0.0.2",
   "type": "module",
   "description": "Vue Drag and Drop list",
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "vue",
+    "drag",
+    "drop"
+  ],
+  "author": "Sorin Comanescu",
   "license": "MIT",
   "scripts": {
     "build": "vite build"
   },
-  "peerDependencies": {
-    "vue": "^3.2.45"
+  "dependencies": {
+    "@vueuse/core": "> 9.11.0",
+    "gsap": "> 3.0.0",
+    "vue": "> 3.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.0.0",
@@ -28,8 +34,5 @@
       "import": "./dist/vue-dnd-list.js",
       "require": "./dist/vue-dnd-list.umd.cjs"
     }
-  },
-  "dependencies": {
-    "gsap": "^3.11.4"
   }
 }
