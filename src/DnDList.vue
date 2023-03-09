@@ -1,6 +1,5 @@
 <template>
-  <section ref="rootRef" :class="listClass" @drop.prevent="onDrop">
-    <div style="">{{ list }}</div>
+  <section ref="rootRef" :class="listClass" @drop.prevent="onDrop" :data-list="list">
     <TransitionGroup
       :css="false"
       @enter="onTransitionEnter">
