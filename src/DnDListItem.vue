@@ -13,9 +13,21 @@ const useDnDItemEvents = function(props, emit, rootRef, copy, horizontal) {
 
   // Item started being dragged
   const onDragStart = (evt) => {
+
+    // Set effect
     const effect = copy ? 'copy' : 'move'
     evt.dataTransfer.dropEffect = effect
     evt.dataTransfer.effectAllowed = effect
+
+    // Set drag image
+    const rect = rootRef.value.getBoundingClientRect()
+    const coords = {
+      x: evt.clientX - rect.left,
+      y: evt.clientY - rect.top
+    }
+    evt.dataTransfer.setDragImage(rootRef.value, coords.x, coords.y)
+
+    // Emit event
     emit('dnd:drag-started', {index: props.index})
   }
 
