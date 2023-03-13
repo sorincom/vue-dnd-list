@@ -7,8 +7,6 @@
         <DnDListItem
           :item="item"
           :index="index"
-          :draggable="!useHandle"
-          :copy="copy"
           class="dnd-list-item"
           @dnd:drag-started="handleDragStarted"
           @dnd:drag-over="handleDragOver">
@@ -21,7 +19,7 @@
 
 <script>
 
-import { ref, computed, watch, onBeforeMount, onBeforeUnmount, nextTick } from "vue"
+import { ref, computed, watch, nextTick, provide, onBeforeMount, onBeforeUnmount } from "vue"
 import { useMouseInElement } from '@vueuse/core'
 import gsap from 'gsap'
 import DnDListItem from "./DnDListItem.vue"
@@ -193,6 +191,10 @@ export default {
       type: String,
       required: false,
     },
+    horizontal: {
+      type: Boolean,
+      default: false,
+    },
     // Whether to accept drop (from anywhere: this list, other lists or any external source).
     // When boolean, it controls whether to accept drop from any source.
     // When string, it will accept drop from a single source, identified by that string.
@@ -289,6 +291,10 @@ export default {
       // Reset the shared state
       dndSharedState.reset()
     }
+
+    provide('dnd-draggable', !props.useHandle)
+    provide('dnd-copy', props.copy)
+    provide('dnd-horizontal', props.horizontal)
 
     return {
       list,

@@ -8,7 +8,8 @@ In `dev` branch:
 2. `npm version patch`
 3. `git push --tags origin dev`
 4. `npm run build`
-4. `npm publish`
-5. `git checkout main`
-6. `git merge dev`
+5. `npm publish`
+6. `git checkout main`
+7. `git merge dev`
+8. `git push`
 7. `git checkout dev`
