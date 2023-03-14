@@ -2,7 +2,8 @@
   <section ref="rootRef" :class="listClass" @drop.prevent="onDrop" :data-list="list">
     <TransitionGroup
       :css="false"
-      @enter="onTransitionEnter">
+      @enter="onTransitionEnter"
+      @leave="onTransitionLeave">
       <template v-for="(item, index) in items" :key="item">
         <DnDListItem
           :item="item"
@@ -58,7 +59,7 @@ const useCustomItemEvents = function(props, list, acceptsDrop) {
   // Something is being dragged over one of this list's items
   // It may be one of list's own items, an item from another list,
   // or something else
-  const handleDragOver = function({ index, position }) {
+  const handleDragOver = function({ index }) {
     
     if(!acceptsDrop.value) return
 
@@ -68,25 +69,22 @@ const useCustomItemEvents = function(props, list, acceptsDrop) {
 
     const shouldMoveItemInsideList = 
       props.items.includes(draggedItem)
-      && !(draggedItemIndex == index)
-      && !(index == props.items.length - 1 && position == 'after')
+      && draggedItemIndex != index
       && !(dndSharedState.sourceList.value == list.value && props.copy)
 
     const shouldAddItemToList = !props.items.includes(draggedItem)
 
     if(shouldMoveItemInsideList) {
       const oldIndex = props.items.indexOf(draggedItem)
-      const newIndex = position === 'after' ? index + 1 : index
+      const newIndex = index
       if(oldIndex != newIndex) {
         props.items.splice(oldIndex, 1)
         nextTick(() => props.items.splice(newIndex, 0, draggedItem))
-        dndSharedState.patch({ operation: 'move' })
       }
     }
     else if(shouldAddItemToList) {
-      const insertIndex = position === 'after' ? index + 1 : index
+      const insertIndex = index
       props.items.splice(insertIndex, 0, draggedItem)
-      dndSharedState.patch({ operation: 'add' })
     }
   }
 
@@ -170,14 +168,17 @@ const useWindowDragOver = function(props, rootRef, list) {
 const useAnimation = function(props) {
   return {
     onTransitionEnter: function (el, done) {
-      if(props.animation) {
-        props.animation(el, {
-          onComplete: done
-        })
+      if(props.animation?.onEnter) {
+        props.animation.onEnter(el, { onComplete: done })
       } else {
-        gsap.effects.ScaleSlideAndAppear(el, {
-          onComplete: done
-        })
+        gsap.effects.DnDStockOnEnter(el, { onComplete: done })
+      }
+    },
+    onTransitionLeave: function (el, done) {
+      if(props.animation?.onLeave) {
+        props.animation.onLeave(el, { onComplete: done })
+      } else {
+        gsap.effects.DnDStockOnLeave(el, { onComplete: done })
       }
     },
   }
@@ -237,7 +238,7 @@ export default {
       default: null,
     },
     animation: {
-      type: Function,
+      type: Object,
       default: null,
     },
   },

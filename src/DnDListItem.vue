@@ -48,33 +48,7 @@ const useDnDItemEvents = function(props, emit, rootRef, copy, horizontal) {
       evt.clientX >= rect.left &&
       evt.clientX <= rect.right
     if (draggingOver) {
-      let position
-      if(horizontal) {
-        // Check if the mouse is in the left or right 1/3 of the item
-        const dropZoneWidth = rect.width / 3; // 1/3 of the item width
-        const draggedOverLeftDropZone = (evt.clientX < rect.left + dropZoneWidth)
-        const draggedOverRightDropZone = (evt.clientX > rect.right - dropZoneWidth)
-        if (draggedOverLeftDropZone) {
-          position = 'before'
-        } else if (draggedOverRightDropZone) {
-          position = 'after'
-        }
-      } else {
-        // Check if the mouse is in the top or bottom 1/3 of the item
-        const dropZoneHeight = rect.height / 3; // 1/3 of the item height
-        const draggedOverTopDropZone = (evt.clientY < rect.top + dropZoneHeight)
-        const draggedOverBottomDropZone = (evt.clientY > rect.bottom - dropZoneHeight)
-        if (draggedOverTopDropZone) {
-          position = 'before'
-        } else if (draggedOverBottomDropZone) {
-          position = 'after'
-        }
-      }
-
-      // Emit a custom event with the item's index and the position
-      if(position) {
-        emit('dnd:drag-over', {index: props.index, position})
-      }
+      emit('dnd:drag-over', {index: props.index})
     }
   }
 
