@@ -1,5 +1,5 @@
 import { DnDList, DnDListItem } from './components'
-import { dndSharedState } from './useDnDSharedState'
+import { dnd } from './useDnD'
 import gsap from 'gsap'
 
 
@@ -51,5 +51,5 @@ export {
   DnDListPlugin,
   DnDList,
   DnDListItem,
-  dndSharedState
+  dnd
 }
