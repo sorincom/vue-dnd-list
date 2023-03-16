@@ -20,7 +20,7 @@ const useDnDItemEvents = function(props, emit, rootRef, copy, list) {
   // Item started being dragged
   function onDragStart(evt) {
     // Set effect
-    const effect = copy ? 'copy' : 'move'
+    const effect = copy.value ? 'copy' : 'move'
     evt.dataTransfer.dropEffect = effect
     evt.dataTransfer.effectAllowed = effect
 
@@ -32,8 +32,10 @@ const useDnDItemEvents = function(props, emit, rootRef, copy, list) {
     }
     evt.dataTransfer.setDragImage(rootRef.value, coords.x, coords.y)
 
+    console.log('copy', copy.value)
+
     // Emit event
-    dnd.start(list, copy? JSON.parse(JSON.stringify(props.item)) : props.item)
+    dnd.start(list.value, copy.value ? JSON.parse(JSON.stringify(props.item)) : props.item)
   }
 
   // Something's being dragged over this list item

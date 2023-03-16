@@ -210,10 +210,6 @@ export default {
       required: false,
       default: randomString(),
     },
-    horizontal: {
-      type: Boolean,
-      default: false,
-    },
     // Whether to accept drop (from anywhere: this list, other lists or any external source).
     // When boolean, it controls whether to accept drop from any source.
     // When string, it will accept drop from a single source, identified by that string.
@@ -288,9 +284,9 @@ export default {
       'dragging-over-when-empty': acceptsDrop.value && draggingOverList.value && props.items.length === 0
     }))
 
-    provide('dnd-draggable', !props.useHandle)
-    provide('dnd-copy', props.copy)
-    provide('dnd-list', list.value)
+    provide('dnd-draggable', computed(() => !props.useHandle))
+    provide('dnd-copy', computed(() => props.copy))
+    provide('dnd-list', list)
 
     return {
       list,
