@@ -1,4 +1,5 @@
 import { ref, computed } from 'vue'
+import { bus } from './bus'
 
 // Maintains shared state for the drag and drop functionality
 function useDnD() {
@@ -18,9 +19,26 @@ function useDnD() {
   })
 
   // Method: signal DnD started
+  // Used internally by DnDList
   const start = (source, data) => {
     _source.value = source
     _data.value = data
+  }
+
+  // Method: signal DnD started
+  // Provided for usage with other sources than DnDList;
+  // It raises the event bus `dnd:dragstart`, in order to
+  // allow DnDList listeners to make a copy of list items
+  // to be restored in case the drag is cancelled
+  const startExternal = (source, data) => {
+    _source.value = source
+    _data.value = data
+    bus.emit('dnd:dragstart', { source })
+  }
+
+  const cancelExternal = (source) => {
+    bus.emit('dnd:cancel', { source })
+    end()
   }
 
   // Method: signal DnD ended
@@ -34,6 +52,8 @@ function useDnD() {
     data: _data,
     asJson,
     start,
+    startExternal,
+    cancelExternal,
     end
   }
 }

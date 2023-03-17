@@ -1,5 +1,5 @@
 <template>
-  <section ref="rootRef" :class="listClass" :data-list="list">
+  <section ref="rootRef" :class="listClass" :data-list="list" :title="list">
     <TransitionGroup
       :css="false"
       @enter="onTransitionEnter"
@@ -8,8 +8,7 @@
         <DnDListItem
           :item="item"
           :index="index"
-          class="dnd-list-item"
-          @dnd:drag-over="handleDragOver">
+          class="dnd-list-item">
           <slot name="item" :item="item" :index="index"></slot>
         </DnDListItem>
       </template>
@@ -25,6 +24,7 @@ import gsap from 'gsap'
 
 import DnDListItem from "./DnDListItem.vue"
 import { dnd } from "./useDnD"
+import { bus } from './bus'
 
 function randomString() {
   const length = 8
@@ -39,56 +39,6 @@ function randomString() {
   }
 
   return chars.join('')
-}
-
-/**
- * Handlers for custom events emitted by list items
- */
-const useCustomItemEvents = function(props, list, acceptsDrop) {
-
-  // Something is being dragged over one of this list's items
-  // It may be one of list's own items, an item from another list,
-  // or something else.
-  function handleDragOver({ index }) {
-
-    const data = dnd.data.value
-    
-    // The first (acceptsDrop) condition is self-explanatory.
-    // The second (data) condition is to prevent the list from accepting
-    // random drops; it will only accept drops from other similar components
-    // (DnDList) or from sources that work with the dnd composable.
-    if(!acceptsDrop.value || !data) return
-
-    // Dragged data will be immediately moved inside the list (if it's
-    // one of list's items) or added to it (if it comes from another source).
-
-    // Dragged data might be one of this list's items
-    const dataIndex = props.items.indexOf(data)
-
-    const shouldMove = 
-      props.items.includes(data)
-      && dataIndex != index
-      && !(dnd.source.value == list.value && props.copy)
-
-    const shouldAdd = !props.items.includes(data)
-
-    if(shouldMove) {
-      const oldIndex = dataIndex
-      const newIndex = index
-      if(oldIndex != newIndex) {
-        props.items.splice(oldIndex, 1)
-        nextTick(() => props.items.splice(newIndex, 0, data))
-      }
-    }
-    else if(shouldAdd) {
-      const insertIndex = index
-      props.items.splice(insertIndex, 0, data)
-    }
-  }
-
-  return {
-    handleDragOver
-  }
 }
 
 /**
@@ -201,14 +151,99 @@ const useAnimation = function(props) {
   }
 }
 
+const useBus = function(props, list, acceptsDrop) {
+  // Will be used if the drag operation is canceled, to restore
+  // the original list items (aka those before the drag operation started)
+  let memItems = [...props.items]
+
+  const forMe = (source) => source == list.value
+
+  // A drag operation started (not necessarily initiated by an
+  // item belonging to this list, source list is provided in
+  // the payload)
+  function onDragStart({source, data}) {
+    memItems = [...props.items]
+    forMe(source) && dnd.start(source, data)
+  }
+
+  // A drag operation happens over a list item (not necessarily 
+  // belonging to this list, target list is provided in the payload)
+  function onDragOver({source, index}) {
+
+    if(source != list.value) return // not for us
+
+    // The index of the item over which the drag operation is happening
+    // const index = props.items.indexOf(payload.data)
+
+    // dnd.data is the dragged data (set by dnd:dragstart)
+    // (e.g. the dragged item if the drag operation was started by a DnDList)
+    const data = dnd.data.value
+    
+    // The first (acceptsDrop) condition is self-explanatory.
+    // The second (data) condition is to prevent the list from accepting
+    // random drops; it will only accept drops from other similar components
+    // (DnDList) or from sources that work with the dnd composable.
+    if(!acceptsDrop.value || !data) return
+
+    // Dragged data will be immediately moved inside the list (if it's
+    // one of list's items) or added to it (if it comes from another source).
+
+    // Dragged data might be one of this list's items (or not)
+    const dataIndex = props.items.indexOf(data)
+
+    const shouldMove = 
+      props.items.includes(data)
+      && dataIndex != index
+      && !(dnd.source.value == list.value && props.copy)
+
+    const shouldAdd = !props.items.includes(data)
+
+    if(shouldMove) {
+      const oldIndex = dataIndex
+      const newIndex = index
+      if(oldIndex != newIndex) {
+        props.items.splice(oldIndex, 1)
+        nextTick(() => props.items.splice(newIndex, 0, data))
+      }
+    }
+    else if(shouldAdd) {
+      const insertIndex = index
+      props.items.splice(insertIndex, 0, data)
+    }
+  }
+
+  // A drag operation ended (not necessarily initiated by an
+  // item belonging to this list, source list is provided in
+  // the payload)
+  function onDragEnd({source}) {
+    forMe(source) && dnd.end()
+  }
+  function onDragCancel({source}) {
+    // Restore original list items for all lists
+    props.items.splice(0, props.items.length, ...memItems)
+    forMe(source) && dnd.end()
+  }
+  onBeforeMount(() => {
+    bus.on('dnd:dragstart', onDragStart)
+    bus.on('dnd:dragover', onDragOver)
+    bus.on('dnd:dragend', onDragEnd)
+    bus.on('dnd:cancel', onDragCancel)
+  })
+  onBeforeUnmount(() => {
+    bus.off('dnd:dragstart', onDragStart)
+    bus.off('dnd:dragover', onDragOver)
+    bus.off('dnd:dragend', onDragEnd)
+    bus.off('dnd:cancel', onDragCancel)
+  })
+}
+
 export default {
   name: 'DnDList',
   components: { DnDListItem },
   props: {
     listId: {
       type: String,
-      required: false,
-      default: randomString(),
+      required: false
     },
     // Whether to accept drop (from anywhere: this list, other lists or any external source).
     // When boolean, it controls whether to accept drop from any source.
@@ -253,12 +288,12 @@ export default {
     animation: {
       type: Object,
       default: null,
-    },
+    }
   },
   setup(props) {
 
     // Unique id for this list
-    const list = ref(props.listId)
+    const list = ref(props.listId ?? randomString())
 
     // Root ref of this list
     const rootRef = ref(null)
@@ -288,11 +323,13 @@ export default {
     provide('dnd-copy', computed(() => props.copy))
     provide('dnd-list', list)
 
+    useBus(props, list, acceptsDrop)
+
     return {
       list,
       listClass,
       rootRef,
-      ...useCustomItemEvents(props, list, acceptsDrop),
+      // ...useCustomItemEvents(props, list, acceptsDrop),
       ...useAnimation(props),
     }
   }

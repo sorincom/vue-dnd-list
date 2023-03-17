@@ -2,7 +2,6 @@ import { DnDList, DnDListItem } from './components'
 import { dnd } from './useDnD'
 import gsap from 'gsap'
 
-
 const transitionDuration = 0.25
 
 gsap.registerEffect({

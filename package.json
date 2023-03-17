@@ -12,11 +12,13 @@
   "author": "Sorin Comanescu",
   "license": "MIT",
   "scripts": {
-    "build": "vite build"
+    "build": "vite build",
+    "build-dev": "vite build --mode development"
   },
   "dependencies": {
     "@vueuse/core": "> 9.11.0",
     "gsap": "> 3.0.0",
+    "mitt": "^3.0.0",
     "vue": "> 3.0.0"
   },
   "devDependencies": {
