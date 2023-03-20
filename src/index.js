@@ -1,5 +1,6 @@
 import { DnDList, DnDListItem } from './components'
 import { dnd } from './useDnD'
+import { dragSourceDirective } from './dragSourceDirective'
 import gsap from 'gsap'
 
 const transitionDuration = 0.25
@@ -20,8 +21,8 @@ gsap.registerEffect({
         onComplete: config.onComplete
       })
   },
-  defaults: {duration: transitionDuration}, //defaults get applied to any "config" object passed to the effect
-  extendTimeline: true, //now you can call the effect directly on any GSAP timeline to have the result immediately inserted in the position you define (default is sequenced at the end)
+  defaults: {duration: transitionDuration},
+  extendTimeline: true,
 });
 
 gsap.registerEffect({
@@ -35,20 +36,26 @@ gsap.registerEffect({
       onComplete: config.onComplete
     })
   },
-  defaults: {duration: transitionDuration}, //defaults get applied to any "config" object passed to the effect
-  extendTimeline: true, //now you can call the effect directly on any GSAP timeline to have the result immediately inserted in the position you define (default is sequenced at the end)
+  defaults: {duration: transitionDuration},
+  extendTimeline: true,
 });
 
 const DnDListPlugin = {
   install(Vue) {
     Vue.component("DnDList", DnDList)
     Vue.component("DnDListItem", DnDListItem)
+    Vue.directive('dragsource', dragSourceDirective)
   }
 }
 
 export {
+  // plugin
   DnDListPlugin,
+  // components
   DnDList,
   DnDListItem,
-  dnd
+  // shared state
+  dnd,
+  // directive
+  dragSourceDirective as dragsource
 }

@@ -20,23 +20,16 @@ function useDnD() {
 
   // Method: signal DnD started
   // Used internally by DnDList
-  const start = (source, data) => {
+  const start = (source, data, busEmit = false) => {
     _source.value = source
     _data.value = data
+
+    // The busEmit parameter is used only by the `dragsource` directive,
+    // allowing other components than DnDListItem to signal a drag started
+    busEmit && bus.emit('dnd:dragstart', { source })
   }
 
-  // Method: signal DnD started
-  // Provided for usage with other sources than DnDList;
-  // It raises the event bus `dnd:dragstart`, in order to
-  // allow DnDList listeners to make a copy of list items
-  // to be restored in case the drag is cancelled
-  const startExternal = (source, data) => {
-    _source.value = source
-    _data.value = data
-    bus.emit('dnd:dragstart', { source })
-  }
-
-  const cancelExternal = (source) => {
+  const cancel = (source) => {
     bus.emit('dnd:cancel', { source })
     end()
   }
@@ -52,9 +45,8 @@ function useDnD() {
     data: _data,
     asJson,
     start,
-    startExternal,
-    cancelExternal,
-    end
+    end,
+    cancel
   }
 }
 

@@ -1,5 +1,5 @@
 <template>
-  <section ref="rootRef" :class="listClass" :data-list="list" :title="list">
+  <section ref="rootRef" :class="listClass" :data-list="list" :title="list" @dragenter="onDragEnter">
     <TransitionGroup
       :css="false"
       @enter="onTransitionEnter"
@@ -237,6 +237,57 @@ const useBus = function(props, list, acceptsDrop) {
   })
 }
 
+// This composable handles the case when dragged data enters the container
+// over the gap between items.
+function useGapOptimization(props, list, rootRef) {
+
+  function onDragEnter(evt) {
+    const el = rootRef.value
+    if(!props.useGapOptimization || (evt.target != el) || el.contains(evt.fromElement)) {
+      // Ignoring: not using gap optimization, event target is not the list itself,
+      // or event source is one of list's children
+      return
+    }
+    // info about the list's layout
+    const display = window.getComputedStyle(el).display
+    const direction = window.getComputedStyle(el)['flex-direction']
+    // event coordinates relative to the list
+    const x = evt.offsetX
+    const y = evt.offsetY
+    // scroll position of the list
+    const scroll = { y: el.scrollTop, x: el.scrollLeft }
+    // compute the closest list item
+    let closestIndex = -1
+    let smallestDist = Infinity
+    props.items?.forEach((item, index) => {
+      const kid = el.children[index]
+      const kidX = kid.offsetLeft - scroll.x
+      const kidY = kid.offsetTop - scroll.y
+      const centerX = kidX + kid.offsetWidth / 2
+      const centerY = kidY + kid.offsetHeight / 2
+      const isOutside = (x < kidX) || (x > kidX + kid.offsetWidth) || (y < kidY) || (y > kidY + kid.offsetHeight)
+      const dist = isOutside ? Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2)) : Infinity
+      if(dist < smallestDist) {
+        smallestDist = dist
+        closestIndex = index
+        if(display == 'flex' && direction == 'column' && (y > centerY)) {
+          closestIndex += 1
+        }
+        if(display == 'flex' && direction == 'row' && (x > centerX)) {
+          closestIndex += 1
+        }
+      }
+    })
+    if(closestIndex != -1) {
+      bus.emit('dnd:dragover', { source: list.value, index: closestIndex })
+    }
+  }
+
+  return {
+    onDragEnter
+  }
+}
+
 export default {
   name: 'DnDList',
   components: { DnDListItem },
@@ -288,7 +339,12 @@ export default {
     animation: {
       type: Object,
       default: null,
-    }
+    },
+    // When true, the list will react to dragging through the gap between list items too
+    useGapOptimization: {
+      type: Boolean,
+      default: true,
+    },
   },
   setup(props) {
 
@@ -331,6 +387,7 @@ export default {
       rootRef,
       // ...useCustomItemEvents(props, list, acceptsDrop),
       ...useAnimation(props),
+      ...useGapOptimization(props, list, rootRef),
     }
   }
 }
