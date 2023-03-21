@@ -1,7 +1,7 @@
 {
   "private": false,
   "name": "vue-dnd-list",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "type": "module",
   "description": "Vue Drag and Drop list",
   "keywords": [
