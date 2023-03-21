@@ -1,5 +1,5 @@
 <template>
-  <section ref="rootRef" :class="listClass" :data-list="list" :title="list" @dragenter="onDragEnter">
+  <section ref="rootRef" :class="listClass">
     <TransitionGroup
       :css="false"
       @enter="onTransitionEnter"
@@ -64,23 +64,17 @@ const useWindowDnD = function(props, rootRef, list, acceptsDrop) {
   // Used to know if a dragging operation is happening over this list
   const draggingOverList = ref(false)
 
-  const { isOutside } = useMouseInElement(rootRef, { enterDelay: 0, leaveDelay: 0 })
+  const { isOutside, elementX, elementY } = useMouseInElement(rootRef, { enterDelay: 0, leaveDelay: 0 })
 
-  // When dragging leaves the list, remove the item
+  // When dragging enters the list, maybe emit dnd:dragover item closest
+  // to the entry point (gap optimization).
+  // When dragging leaves the list, remove the item if the case.
   watch(draggingOverList, (newVal) => {
-    if (!newVal) {
-      const data = dnd.data.value
-      const shouldDeleteItem = 
-        props.items.includes(data)
-        // only delete the item if the mouse is outside the list, as we
-        // want to keep the item if it's dropped inside it
-        && isOutside.value
-        // don't delete from the source list, if that list's `copy` prop is true
-        && !((list.value == dnd.source.value) && props.copy)
-      if(shouldDeleteItem) {
-        const index = props.items.indexOf(data)
-        props.items.splice(index, 1)
-      }
+    if(newVal) {
+      props.useGapOptimization && applyGapOptimization()
+    }
+    else {
+      maybeDeleteItem()
     }
   })
 
@@ -95,7 +89,9 @@ const useWindowDnD = function(props, rootRef, list, acceptsDrop) {
       evt.clientX <= rect.right
   }
 
-  // DnD operation ended
+  // Only handles special cases, such as when the list is empty or
+  // when `postDrop` was provided. Otherwise, the dragged data should
+  // have been already managed by bus event handlers.
   function onDrop() {
     const data = dnd.data.value
     if(dnd.source.value != list.value && data && !isOutside.value) {
@@ -110,6 +106,60 @@ const useWindowDnD = function(props, rootRef, list, acceptsDrop) {
       dnd.end()
     }
     draggingOverList.value = false
+  }
+
+  // Handles the case when dragged data enters the container
+  // through the gap between items.
+  function applyGapOptimization() {
+    const el = rootRef.value
+    const x = elementX.value
+    const y = elementY.value
+    // info about the list's layout
+    const display = window.getComputedStyle(el).display
+    const direction = window.getComputedStyle(el)['flex-direction']
+    // scroll position of the list
+    const scroll = { y: el.scrollTop, x: el.scrollLeft }
+    // compute the closest list item
+    let closestIndex = -1
+    let smallestDist = Infinity
+    props.items?.forEach((_, index) => {
+      const kid = el.children[index]
+      const kidLeft = kid.offsetLeft - scroll.x
+      const kidRight = kidLeft + kid.offsetWidth
+      const kidTop = kid.offsetTop - scroll.y
+      const kidBottom = kidTop + kid.offsetHeight
+      const kidCenter = { x: kidLeft + kid.offsetWidth / 2, y: kidTop + kid.offsetHeight / 2 }
+      const isOutside = (x < kidLeft) || (x > kidRight) || (y < kidTop) || (y > kidBottom)
+      const dist = isOutside ? Math.sqrt(Math.pow(x - kidCenter.x, 2) + Math.pow(y - kidCenter.y, 2)) : Infinity
+      if(dist < smallestDist) {
+        smallestDist = dist
+        closestIndex = index
+        if(display == 'flex' && direction == 'column' && (y > kidCenter.y)) {
+          closestIndex += 1
+        }
+        if(display == 'flex' && direction == 'row' && (x > kidCenter.x)) {
+          closestIndex += 1
+        }
+      }
+    })
+    if(closestIndex != -1) {
+      bus.emit('dnd:dragover', { source: list.value, index: closestIndex })
+    }
+  }
+
+  function maybeDeleteItem() {
+    const data = dnd.data.value
+    const shouldDeleteItem = 
+      props.items.includes(data)
+      // only delete the item if the mouse is outside the list, as we
+      // want to keep the item if it's dropped inside it
+      && isOutside.value
+      // don't delete from the source list, if that list's `copy` prop is true
+      && !((list.value == dnd.source.value) && props.copy)
+    if(shouldDeleteItem) {
+      const index = props.items.indexOf(data)
+      props.items.splice(index, 1)
+    }
   }
 
   onBeforeMount(() => {
@@ -237,57 +287,6 @@ const useBus = function(props, list, acceptsDrop) {
   })
 }
 
-// This composable handles the case when dragged data enters the container
-// over the gap between items.
-function useGapOptimization(props, list, rootRef) {
-
-  function onDragEnter(evt) {
-    const el = rootRef.value
-    if(!props.useGapOptimization || (evt.target != el) || el.contains(evt.fromElement)) {
-      // Ignoring: not using gap optimization, event target is not the list itself,
-      // or event source is one of list's children
-      return
-    }
-    // info about the list's layout
-    const display = window.getComputedStyle(el).display
-    const direction = window.getComputedStyle(el)['flex-direction']
-    // event coordinates relative to the list
-    const x = evt.offsetX
-    const y = evt.offsetY
-    // scroll position of the list
-    const scroll = { y: el.scrollTop, x: el.scrollLeft }
-    // compute the closest list item
-    let closestIndex = -1
-    let smallestDist = Infinity
-    props.items?.forEach((item, index) => {
-      const kid = el.children[index]
-      const kidX = kid.offsetLeft - scroll.x
-      const kidY = kid.offsetTop - scroll.y
-      const centerX = kidX + kid.offsetWidth / 2
-      const centerY = kidY + kid.offsetHeight / 2
-      const isOutside = (x < kidX) || (x > kidX + kid.offsetWidth) || (y < kidY) || (y > kidY + kid.offsetHeight)
-      const dist = isOutside ? Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2)) : Infinity
-      if(dist < smallestDist) {
-        smallestDist = dist
-        closestIndex = index
-        if(display == 'flex' && direction == 'column' && (y > centerY)) {
-          closestIndex += 1
-        }
-        if(display == 'flex' && direction == 'row' && (x > centerX)) {
-          closestIndex += 1
-        }
-      }
-    })
-    if(closestIndex != -1) {
-      bus.emit('dnd:dragover', { source: list.value, index: closestIndex })
-    }
-  }
-
-  return {
-    onDragEnter
-  }
-}
-
 export default {
   name: 'DnDList',
   components: { DnDListItem },
@@ -371,6 +370,8 @@ export default {
 
     const { draggingOverList } = useWindowDnD(props, rootRef, list, acceptsDrop)
 
+    // Expose to consumers a special CSS class when the list is empty and
+    // a drag operation is in progress over it
     const listClass = computed(() => ({
       'dragging-over-when-empty': acceptsDrop.value && draggingOverList.value && props.items.length === 0
     }))
@@ -379,15 +380,14 @@ export default {
     provide('dnd-copy', computed(() => props.copy))
     provide('dnd-list', list)
 
+    // Most dnd operations are implemented by this composable
     useBus(props, list, acceptsDrop)
 
     return {
       list,
       listClass,
       rootRef,
-      // ...useCustomItemEvents(props, list, acceptsDrop),
       ...useAnimation(props),
-      ...useGapOptimization(props, list, rootRef),
     }
   }
 }

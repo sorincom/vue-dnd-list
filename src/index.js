@@ -1,6 +1,6 @@
 import { DnDList, DnDListItem } from './components'
 import { dnd } from './useDnD'
-import { dragSourceDirective } from './dragSourceDirective'
+import { dragSourceDirective as  dragsource } from './dragSourceDirective'
 import gsap from 'gsap'
 
 const transitionDuration = 0.25
@@ -56,6 +56,6 @@ export {
   DnDListItem,
   // shared state
   dnd,
-  // directive
-  dragSourceDirective as dragsource
+  // v-dragsource directive
+  dragsource
 }
