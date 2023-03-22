@@ -5,6 +5,7 @@
  - Drag and drop between multiple lists
  - Drag and drop from arbitrary DOM elements to the list
  - Control from which sources a list accepts drop
+ - Supports cancelling drag and drop
  - Vertical, horizontal or grid layout
  - Variable item height
  - Custom animations
